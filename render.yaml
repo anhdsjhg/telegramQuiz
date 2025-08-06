@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: telegramquiz
+    env: python
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+    startCommand: gunicorn telegramquiz.wsgi:application
