@@ -26,10 +26,11 @@ SECRET_KEY = 'django-insecure-0x9==5!u^w)19eu2)__jikzwfab7b(b4g)0q3*7n6@^)6m=x))
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['.onrender.com']
 
+CSRF_TRUSTED_ORIGINS = ['https://telegramquiz-soey.onrender.com']
 
 # Application definition
 
