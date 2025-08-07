@@ -284,11 +284,34 @@ async def handle_quiz_selection_with_id(user_id, quiz_id, context):
 async def handle_variant_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    variant_id = int(query.data.split("_")[1])
+
+    try:
+        variant_id = int(query.data.split("_")[1])
+    except (IndexError, ValueError):
+        await query.message.reply_text("❌ Қате: Вариант таңдалмады.")
+        return
+
     user_id = extract_user_id(query)
-    questions = await sync_to_async(list)(Question.objects.filter(variant_id=variant_id))
-    variant = await sync_to_async(QuizVariant.objects.select_related("quiz").get)(id=variant_id)
-    name = (await get_user_profile(user_id)).user_name
+
+    # Получаем вопросы по варианту
+    questions = await sync_to_async(list)(
+        Question.objects.filter(variant_id=variant_id)
+    )
+
+    if not questions:
+        await query.message.reply_text("❌ Бұл вариантта сұрақтар табылмады.")
+        return
+
+    # Получаем сам вариант и связанную викторину
+    variant = await sync_to_async(
+        QuizVariant.objects.select_related("quiz").get
+    )(id=variant_id)
+
+    # Получаем имя пользователя из профиля
+    user_profile = await get_user_profile(user_id)
+    user_name = user_profile.user_name
+
+    # Сохраняем состояние
     user_states[user_id] = {
         "quiz_id": variant.quiz.id,
         "variant_id": variant.id,
@@ -296,10 +319,19 @@ async def handle_variant_selection(update: Update, context: ContextTypes.DEFAULT
         "index": 0,
         "score": 0,
         "answers": [],
-        "name": name,
+        "name": user_name,
         "stage": "in_quiz",
-        "answered": False
+        "answered": False,
     }
+
+    # Отправляем сообщение о выбранной теме и варианте
+    await query.message.reply_text(
+        f"📘 Тақырып: *{variant.quiz.title}*\n"
+        f"📑 Таңдалған вариант: *{variant.title}*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # Показываем первый вопрос
     await send_question(query, context)
 
 
@@ -415,3 +447,6 @@ async def handle_quiz_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     await show_quiz_options(update, context, only_allowed=False)
+
+
+
