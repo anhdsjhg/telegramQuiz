@@ -183,7 +183,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "quiz_obj": quiz
                 }
 
-                await context.bot.send_message(chat_id=user_id, text="✅ Қол жеткізу рұқсат етілді! Енді өз атыңды жаз:")
+                await context.bot.send_message(chat_id=user_id, text="✅ Қол жеткізу рұқсат етілді!")
                 await handle_quiz_selection_with_id(user_id, quiz.id, context)
                 return
             else:
