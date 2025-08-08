@@ -11,21 +11,24 @@ class Quiz(models.Model):
 
 
 class QuizVariant(models.Model):
-    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="variants")
-    title = models.CharField(max_length=100)
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="variants", null=True, blank=True)
+    title = models.CharField(max_length=100, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.quiz.title} — {self.title}"
+        if self.quiz:
+            return f"{self.quiz.title} — {self.title}"
+        return f"(Без викторины) — {self.title}"
+
 
 
 class Question(models.Model):
     variant = models.ForeignKey(QuizVariant, on_delete=models.CASCADE, related_name="questions", null=True, blank=True)
     question = models.TextField()
-    option1 = models.CharField(max_length=255)
-    option2 = models.CharField(max_length=255)
-    option3 = models.CharField(max_length=255)
-    option4 = models.CharField(max_length=255)
-    correct_answer = models.IntegerField()
+    option1 = models.CharField(max_length=255, null=True, blank=True)
+    option2 = models.CharField(max_length=255, null=True, blank=True)
+    option3 = models.CharField(max_length=255, null=True, blank=True)
+    option4 = models.CharField(max_length=255, null=True, blank=True)
+    correct_answer = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.question

@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" action="import-csv/">
+  {% csrf_token %}
+  <label>Quiz Title: <input type="text" name="quiz_title" required></label><br>
+  <label>Select CSV File: <input type="file" name="csv_file" accept=".csv" required></label><br><br>
+  <input type="submit" value="📥 Импортировать CSV">
+</form>
+<hr>
+{{ block.super }}
+{% endblock %}

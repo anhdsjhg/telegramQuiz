@@ -49,10 +49,10 @@ class QuizVariantInline(admin.TabularInline):
     extra = 1
 
 
-@admin.register(Quiz)
-class QuizAdmin(admin.ModelAdmin):
-    list_display = ("id", "title")
-    inlines = [QuizVariantInline]
+# @admin.register(Quiz)
+# class QuizAdmin(admin.ModelAdmin):
+#     list_display = ("id", "title")
+#     inlines = [QuizVariantInline]
 
 
 @admin.register(QuizVariant)
@@ -69,11 +69,12 @@ class QuestionAdmin(admin.ModelAdmin):
     list_filter = ("variant__quiz",)
 
     def get_correct_option(self, obj):
-        options = [obj.option1, obj.option2, obj.option3, obj.option4]
+        if obj.correct_answer is None:
+            return "(не задано)"
         if 1 <= obj.correct_answer <= 4:
-            return options[obj.correct_answer - 1]
-        return "❌ Ошибка"
-    get_correct_option.short_description = "Правильный ответ"
+            return getattr(obj, f"option{obj.correct_answer}")
+        return "(неизвестно)"
+
 
 
 # ------------------- UserResult and Answers -------------------
@@ -104,3 +105,67 @@ class UserAnswerAdmin(admin.ModelAdmin):
     list_display = ["result", "question", "selected_option", "is_correct"]
     list_filter = ("is_correct", "question__variant__quiz")
     search_fields = ("result__user_id", "question__question")
+
+
+from django.http import HttpResponse
+import pandas as pd
+from io import TextIOWrapper
+from django.shortcuts import redirect
+from django.urls import path
+from django.contrib import messages
+
+class QuizAdmin(admin.ModelAdmin):
+    list_display = ("id", "title")
+    change_list_template = "admin/quiz_changelist.html"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path("import-csv/", self.admin_site.admin_view(self.import_csv), name="quiz-import-csv"),
+        ]
+        return custom_urls + urls
+
+    def import_csv(self, request):
+        if request.method == "POST" and request.FILES.get("csv_file"):
+            csv_file = TextIOWrapper(request.FILES["csv_file"].file, encoding="utf-8")
+            df = pd.read_csv(csv_file)
+
+            quiz_title = request.POST.get("quiz_title", "Импортированная тема")
+            quiz, _ = Quiz.objects.get_or_create(title=quiz_title)
+
+            for variant_title in df["variant_title"].unique():
+                variant_df = df[df["variant_title"] == variant_title]
+                variant, _ = QuizVariant.objects.get_or_create(title=variant_title, quiz=quiz)
+
+                for _, row in variant_df.iterrows():
+                    correct_option = None
+                    for i in range(1, 5):
+                        if str(row[f"is_correct_{i}"]).strip().lower() == "true":
+                            correct_option = i
+                            break
+                    if correct_option is None:
+                        continue
+
+                    Question.objects.create(
+                        variant=variant,
+                        question=row["question_text"],
+                        option1=row["answer_1"],
+                        option2=row["answer_2"],
+                        option3=row["answer_3"],
+                        option4=row["answer_4"],
+                        correct_answer=correct_option,
+                    )
+
+            self.message_user(request, "CSV импорт выполнен успешно ✅", messages.SUCCESS)
+            return redirect("..")
+        return HttpResponse("Ошибка: выберите CSV-файл", status=400)
+
+# Пере-регистрируем Quiz с новым admin
+from django.contrib.admin.sites import AlreadyRegistered, NotRegistered
+
+try:
+    admin.site.unregister(Quiz)
+except NotRegistered:
+    pass
+
+admin.site.register(Quiz, QuizAdmin)
