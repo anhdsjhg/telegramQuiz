@@ -2,6 +2,24 @@ from django.contrib import admin
 from .models import Quiz, QuizVariant, Question, UserResult, UserAnswer, UserProfile
 from .models import AllowedUser, InviteToken
 
+
+# ------------------- Общий фильтр по вариантам -------------------
+class VariantFilter(admin.SimpleListFilter):
+    title = "Вариант"
+    parameter_name = "variant"
+
+    def lookups(self, request, model_admin):
+        quiz_id = request.GET.get("variant__quiz__id__exact") or request.GET.get("quiz__id__exact")
+        if quiz_id:
+            return QuizVariant.objects.filter(quiz_id=quiz_id).values_list("id", "title")
+        return []
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(variant_id=self.value())
+        return queryset
+
+
 # ------------------- UserProfile -------------------
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
@@ -37,22 +55,10 @@ class AllowedUserAdmin(admin.ModelAdmin):
     get_invite_token.short_description = "Invite Token"
 
 
-
-# ------------------- Quiz and Variants -------------------
+# ------------------- QuizVariant -------------------
 class QuestionInline(admin.TabularInline):
     model = Question
     extra = 1
-
-
-class QuizVariantInline(admin.TabularInline):
-    model = QuizVariant
-    extra = 1
-
-
-# @admin.register(Quiz)
-# class QuizAdmin(admin.ModelAdmin):
-#     list_display = ("id", "title")
-#     inlines = [QuizVariantInline]
 
 
 @admin.register(QuizVariant)
@@ -66,7 +72,7 @@ class QuizVariantAdmin(admin.ModelAdmin):
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ("id", "question", "variant", "correct_answer", "get_correct_option")
-    list_filter = ("variant__quiz",)
+    list_filter = ("variant__quiz", VariantFilter)
 
     def get_correct_option(self, obj):
         if obj.correct_answer is None:
@@ -76,8 +82,7 @@ class QuestionAdmin(admin.ModelAdmin):
         return "(неизвестно)"
 
 
-
-# ------------------- UserResult and Answers -------------------
+# ------------------- UserResult -------------------
 class UserAnswerInline(admin.TabularInline):
     model = UserAnswer
     extra = 0
@@ -87,7 +92,7 @@ class UserAnswerInline(admin.TabularInline):
 @admin.register(UserResult)
 class UserResultAdmin(admin.ModelAdmin):
     list_display = ("get_user_name", "get_user_id", "variant", "quiz", "score", "total", "timestamp")
-    list_filter = ("quiz", "timestamp")
+    list_filter = ("quiz", VariantFilter, "timestamp")
     search_fields = ("user_profile__user_name", "user_profile__user_id")
     inlines = [UserAnswerInline]
 
@@ -100,13 +105,15 @@ class UserResultAdmin(admin.ModelAdmin):
     get_user_id.short_description = "User ID"
 
 
+# ------------------- UserAnswer -------------------
 @admin.register(UserAnswer)
 class UserAnswerAdmin(admin.ModelAdmin):
     list_display = ["result", "question", "selected_option", "is_correct"]
-    list_filter = ("is_correct", "question__variant__quiz")
-    search_fields = ("result__user_id", "question__question")
+    list_filter = ("question__variant__quiz", VariantFilter, "is_correct")
+    search_fields = ("result__user_profile__user_id", "question__question")
 
 
+# ------------------- Импорт CSV в Quiz -------------------
 from django.http import HttpResponse
 import pandas as pd
 from io import TextIOWrapper
@@ -160,8 +167,8 @@ class QuizAdmin(admin.ModelAdmin):
             return redirect("..")
         return HttpResponse("Ошибка: выберите CSV-файл", status=400)
 
-# Пере-регистрируем Quiz с новым admin
-from django.contrib.admin.sites import AlreadyRegistered, NotRegistered
+
+from django.contrib.admin.sites import NotRegistered
 
 try:
     admin.site.unregister(Quiz)
