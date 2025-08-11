@@ -42,6 +42,16 @@ class InviteTokenAdmin(admin.ModelAdmin):
 class AllowedUserAdmin(admin.ModelAdmin):
     list_display = ("get_user_id", "get_user_name", "quiz", "get_invite_token")
     search_fields = ("user_profile__user_name", "user_profile__user_id")
+    list_filter = ("quiz",)  # фильтр по викторинам
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "invite_token":
+            quiz_id = request.GET.get("quiz__id__exact")
+            if quiz_id:
+                kwargs["queryset"] = InviteToken.objects.filter(quiz_id=quiz_id)
+            else:
+                kwargs["queryset"] = InviteToken.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_user_id(self, obj):
         return obj.user_profile.user_id if obj.user_profile else None
@@ -53,6 +63,7 @@ class AllowedUserAdmin(admin.ModelAdmin):
     def get_invite_token(self, obj):
         return obj.invite_token.token if obj.invite_token else "-"
     get_invite_token.short_description = "Invite Token"
+
 
 
 # ------------------- QuizVariant -------------------
