@@ -8,18 +8,24 @@ class QuizFilter(admin.SimpleListFilter):
     parameter_name = 'quiz'
 
     def lookups(self, request, model_admin):
-        return [(q.id, q.title) for q in Quiz.objects.all()]
+        try:
+            return [(q.id, q.title) for q in Quiz.objects.all()]
+        except Exception:
+            # Если база ещё не готова — не рушим админку
+            return []
 
     def queryset(self, request, queryset):
         if self.value():
-            quiz_field = self._get_quiz_field(model_admin=queryset.model)
-            return queryset.filter(**{f"{quiz_field}__id": self.value()})
+            quiz_field = self._get_quiz_field(model_admin.model)
+            if quiz_field:
+                try:
+                    return queryset.filter(**{f"{quiz_field}__id": self.value()})
+                except Exception:
+                    return queryset.none()
         return queryset
 
-    def _get_quiz_field(self, model_admin):
+    def _get_quiz_field(self, model):
         """Определяем путь до quiz в зависимости от модели."""
-        model = model_admin if not hasattr(model_admin, 'model') else model_admin.model
-
         if hasattr(model, "quiz"):
             return "quiz"
         elif hasattr(model, "variant"):
@@ -28,8 +34,7 @@ class QuizFilter(admin.SimpleListFilter):
             return "question__variant__quiz"
         elif hasattr(model, "result"):
             return "result__quiz"
-        return "quiz"
-
+        return None
 
 
 # ------------------- Каскадный фильтр по вариантам -------------------
@@ -40,38 +45,32 @@ class VariantFilter(admin.SimpleListFilter):
     def lookups(self, request, model_admin):
         quiz_id = request.GET.get("quiz")
         if quiz_id:
-            return [(v.id, v.title) for v in QuizVariant.objects.filter(quiz_id=quiz_id)]
+            try:
+                return [(v.id, v.title) for v in QuizVariant.objects.filter(quiz_id=quiz_id)]
+            except Exception:
+                return []
         return []
 
     def queryset(self, request, queryset):
         if self.value():
-            return queryset.filter(
-                **{f"{self._get_variant_field()}__id": self.value()}
-            )
+            variant_field = self._get_variant_field(queryset.model)
+            if variant_field:
+                try:
+                    return queryset.filter(**{f"{variant_field}__id": self.value()})
+                except Exception:
+                    return queryset.none()
         return queryset
 
-    def _get_variant_field(self):
+    def _get_variant_field(self, model):
         """Определяем путь до variant в зависимости от модели."""
-        model = self.model
         if hasattr(model, "variant"):
             return "variant"
         elif hasattr(model, "question"):
             return "question__variant"
         elif hasattr(model, "result"):
             return "result__variant"
-        return "variant"
+        return None
 
-    @property
-    def model(self):
-        """Получаем модель, к которой применён фильтр."""
-        try:
-            return self.model_admin.model
-        except AttributeError:
-            return None
-
-    def __init__(self, request, params, model, model_admin):
-        self.model_admin = model_admin
-        super().__init__(request, params, model, model_admin)
 
 
 # ------------------- UserProfile -------------------
