@@ -2,75 +2,22 @@ from django.contrib import admin
 from .models import Quiz, QuizVariant, Question, UserResult, UserAnswer, UserProfile
 from .models import AllowedUser, InviteToken
 
-# ------------------- Фильтр по викторинам -------------------
-class QuizFilter(admin.SimpleListFilter):
-    title = 'Тема'
-    parameter_name = 'quiz'
 
-    def lookups(self, request, model_admin):
-        try:
-            return [(q.id, q.title) for q in Quiz.objects.all()]
-        except Exception:
-            # Если база ещё не готова — не рушим админку
-            return []
-
-    def queryset(self, request, queryset):
-        if self.value():
-            quiz_field = self._get_quiz_field(queryset.model)
-            if quiz_field:
-                try:
-                    return queryset.filter(**{f"{quiz_field}__id": self.value()})
-                except Exception:
-                    return queryset.none()
-        return queryset
-
-    def _get_quiz_field(self, model):
-        """Определяем путь до quiz в зависимости от модели."""
-        if hasattr(model, "quiz"):
-            return "quiz"
-        elif hasattr(model, "variant"):
-            return "variant__quiz"
-        elif hasattr(model, "question"):
-            return "question__variant__quiz"
-        elif hasattr(model, "result"):
-            return "result__quiz"
-        return None
-
-
-# ------------------- Каскадный фильтр по вариантам -------------------
+# ------------------- Общий фильтр по вариантам -------------------
 class VariantFilter(admin.SimpleListFilter):
     title = "Вариант"
     parameter_name = "variant"
 
     def lookups(self, request, model_admin):
-        quiz_id = request.GET.get("quiz")
+        quiz_id = request.GET.get("variant__quiz__id__exact") or request.GET.get("quiz__id__exact")
         if quiz_id:
-            try:
-                return [(v.id, v.title) for v in QuizVariant.objects.filter(quiz_id=quiz_id)]
-            except Exception:
-                return []
+            return QuizVariant.objects.filter(quiz_id=quiz_id).values_list("id", "title")
         return []
 
     def queryset(self, request, queryset):
         if self.value():
-            variant_field = self._get_variant_field(queryset.model)
-            if variant_field:
-                try:
-                    return queryset.filter(**{f"{variant_field}__id": self.value()})
-                except Exception:
-                    return queryset.none()
+            return queryset.filter(variant_id=self.value())
         return queryset
-
-    def _get_variant_field(self, model):
-        """Определяем путь до variant в зависимости от модели."""
-        if hasattr(model, "variant"):
-            return "variant"
-        elif hasattr(model, "question"):
-            return "question__variant"
-        elif hasattr(model, "result"):
-            return "result__variant"
-        return None
-
 
 
 # ------------------- UserProfile -------------------
@@ -95,11 +42,11 @@ class InviteTokenAdmin(admin.ModelAdmin):
 class AllowedUserAdmin(admin.ModelAdmin):
     list_display = ("get_user_id", "get_user_name", "quiz", "get_invite_token")
     search_fields = ("user_profile__user_name", "user_profile__user_id")
-    list_filter = (QuizFilter,)
+    list_filter = ("quiz",)  # фильтр по викторинам
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "invite_token":
-            quiz_id = request.GET.get("quiz")
+            quiz_id = request.GET.get("quiz__id__exact")
             if quiz_id:
                 kwargs["queryset"] = InviteToken.objects.filter(quiz_id=quiz_id)
             else:
@@ -116,6 +63,7 @@ class AllowedUserAdmin(admin.ModelAdmin):
     def get_invite_token(self, obj):
         return obj.invite_token.token if obj.invite_token else "-"
     get_invite_token.short_description = "Invite Token"
+
 
 
 # ------------------- QuizVariant -------------------
@@ -135,7 +83,7 @@ class QuizVariantAdmin(admin.ModelAdmin):
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ("id", "question", "variant", "correct_answer", "get_correct_option")
-    list_filter = (QuizFilter, VariantFilter)
+    list_filter = ("variant__quiz", VariantFilter)
 
     def get_correct_option(self, obj):
         if obj.correct_answer is None:
@@ -155,7 +103,7 @@ class UserAnswerInline(admin.TabularInline):
 @admin.register(UserResult)
 class UserResultAdmin(admin.ModelAdmin):
     list_display = ("get_user_name", "get_user_id", "variant", "quiz", "score", "total", "timestamp")
-    list_filter = (QuizFilter, VariantFilter, "timestamp")
+    list_filter = ("quiz", VariantFilter, "timestamp")
     search_fields = ("user_profile__user_name", "user_profile__user_id")
     inlines = [UserAnswerInline]
 
@@ -172,7 +120,7 @@ class UserResultAdmin(admin.ModelAdmin):
 @admin.register(UserAnswer)
 class UserAnswerAdmin(admin.ModelAdmin):
     list_display = ["result", "question", "selected_option", "is_correct"]
-    list_filter = (QuizFilter, VariantFilter, "is_correct")
+    list_filter = ("question__variant__quiz", VariantFilter, "is_correct")
     search_fields = ("result__user_profile__user_id", "question__question")
 
 
@@ -232,8 +180,10 @@ class QuizAdmin(admin.ModelAdmin):
 
 
 from django.contrib.admin.sites import NotRegistered
+
 try:
     admin.site.unregister(Quiz)
 except NotRegistered:
     pass
+
 admin.site.register(Quiz, QuizAdmin)
