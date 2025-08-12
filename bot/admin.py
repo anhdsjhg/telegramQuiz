@@ -16,7 +16,7 @@ class QuizFilter(admin.SimpleListFilter):
 
     def queryset(self, request, queryset):
         if self.value():
-            quiz_field = self._get_quiz_field(model_admin.model)
+            quiz_field = self._get_quiz_field(queryset.model)
             if quiz_field:
                 try:
                     return queryset.filter(**{f"{quiz_field}__id": self.value()})
