@@ -1,5 +1,6 @@
 import os
 import django
+import asyncio
 
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
@@ -22,12 +23,18 @@ async def setup_bot_commands(app):
         BotCommand("start", "Тестілеуді бастау"),
         BotCommand("results", "Нәтижелерді көру"),
     ]
-    await app.bot.delete_webhook(drop_pending_updates=True)
     await app.bot.set_my_commands(commands)
 
-def main():
+async def main():
     app = ApplicationBuilder().token("8490466804:AAEYScC-GkuMKE-MXdVKlhitKKLFJpz1P9I").build()
 
+    # ✅ Сначала удаляем webhook, чтобы polling не упал с Conflict
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
+    # ✅ Настраиваем команды
+    await setup_bot_commands(app)
+
+    # ✅ Добавляем все хендлеры
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("results", show_results))
 
@@ -38,10 +45,8 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
     app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-    app.post_init = setup_bot_commands
-
     print("Бот запущен")
-    app.run_polling()  
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
