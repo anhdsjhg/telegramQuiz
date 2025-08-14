@@ -2,7 +2,9 @@ import os
 import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-TOKEN = os.environ["TOKEN"]
+
+# Получаем токен из переменных окружения
+TOKEN = os.environ.get("TOKEN")
 
 # Настройка Django окружения
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "telegramquiz.settings")
@@ -39,11 +41,17 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
     app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-    # Выполняем асинхронную настройку перед запуском
+    # Настройка перед запуском
     app.post_init = setup_bot_commands
 
     print("Бот запущен")
-    app.run_polling(close_loop=False)  # Не закрываем общий event loop
+    app.run_polling(close_loop=False)  # Не закрываем event loop
 
 if __name__ == "__main__":
-    main()
+    # Запускаем только если RUN_BOT=true
+    if os.environ.get("RUN_BOT", "false").lower() == "true":
+        if not TOKEN:
+            raise ValueError("Не найден TOKEN в переменных окружения")
+        main()
+    else:
+        print("RUN_BOT=false — бот не запущен.")
