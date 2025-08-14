@@ -2,6 +2,7 @@ import os
 import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+TOKEN = os.environ["TOKEN"]
 
 # Настройка Django окружения
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "telegramquiz.settings")
@@ -26,7 +27,7 @@ async def setup_bot_commands(app):
     ])
 
 def main():
-    app = ApplicationBuilder().token("8490466804:AAEYScC-GkuMKE-MXdVKlhitKKLFJpz1P9I").build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     # Регистрируем хендлеры
     app.add_handler(CommandHandler("start", start))
