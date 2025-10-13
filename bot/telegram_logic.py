@@ -2,6 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from asgiref.sync import sync_to_async
+from django.conf import settings
 
 from .models import (Quiz, QuizVariant, Question, UserResult, UserAnswer, AllowedUser, InviteToken, UserProfile)
 
