@@ -29,6 +29,7 @@ class Question(models.Model):
     option3 = models.CharField(max_length=255, null=True, blank=True)
     option4 = models.CharField(max_length=255, null=True, blank=True)
     correct_answer = models.IntegerField(null=True, blank=True)
+    image = models.ImageField(upload_to="questions/", blank=True, null=True)
 
     def __str__(self):
         return self.question

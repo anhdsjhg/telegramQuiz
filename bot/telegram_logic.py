@@ -342,12 +342,15 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     if not state:
         await context.bot.send_message(chat_id=user_id, text="⚠️ Қате орын алды. Алдымен викторинаны бастаңыз.")
         return
+
     index = state["index"]
     questions = state["questions"]
+
     if index >= len(questions):
         quiz = await sync_to_async(Quiz.objects.get)(id=state["quiz_id"])
         variant = await sync_to_async(QuizVariant.objects.get)(id=state["variant_id"])
         profile = await get_user_profile(user_id)
+
         result = await sync_to_async(UserResult.objects.create)(
             user_profile=profile,
             quiz=quiz,
@@ -355,6 +358,7 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             score=state["score"],
             total=len(questions)
         )
+
         for answer in state["answers"]:
             await sync_to_async(UserAnswer.objects.create)(
                 result=result,
@@ -362,6 +366,7 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
                 selected_option=answer["selected"],
                 is_correct=answer["is_correct"]
             )
+
         await context.bot.send_message(chat_id=user_id, text=f"🎉 Викторина аяқталды! Сіздің нәтижеңіз: {state['score']} / {len(questions)}.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -372,12 +377,25 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         return
+
     q = questions[index]
     text = f"{q.question}\n\n1️⃣ {q.option1}\n\n2️⃣ {q.option2}\n\n3️⃣ {q.option3}\n\n4️⃣ {q.option4}"
     buttons = [[InlineKeyboardButton(f"{i + 1}️⃣", callback_data=str(i + 1))] for i in range(4)]
 
-    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=InlineKeyboardMarkup(buttons))
-    state["answered"] = False
+    # ✅ теперь проверка на фото
+    if getattr(q, "image", None) and q.image:
+        await context.bot.send_photo(
+            chat_id=user_id,
+            photo=q.image.url,   # Django автоматически отдаст URL
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
