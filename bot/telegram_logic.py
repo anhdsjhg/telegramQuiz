@@ -2,7 +2,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from asgiref.sync import sync_to_async
-from django.conf import settings
 
 from .models import (Quiz, QuizVariant, Question, UserResult, UserAnswer, AllowedUser, InviteToken, UserProfile)
 
@@ -343,16 +342,12 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     if not state:
         await context.bot.send_message(chat_id=user_id, text="⚠️ Қате орын алды. Алдымен викторинаны бастаңыз.")
         return
-
     index = state["index"]
     questions = state["questions"]
-
-    # ✅ Если все вопросы уже отвечены — завершаем викторину
     if index >= len(questions):
         quiz = await sync_to_async(Quiz.objects.get)(id=state["quiz_id"])
         variant = await sync_to_async(QuizVariant.objects.get)(id=state["variant_id"])
         profile = await get_user_profile(user_id)
-
         result = await sync_to_async(UserResult.objects.create)(
             user_profile=profile,
             quiz=quiz,
@@ -360,7 +355,6 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             score=state["score"],
             total=len(questions)
         )
-
         for answer in state["answers"]:
             await sync_to_async(UserAnswer.objects.create)(
                 result=result,
@@ -368,7 +362,6 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
                 selected_option=answer["selected"],
                 is_correct=answer["is_correct"]
             )
-
         await context.bot.send_message(chat_id=user_id, text=f"🎉 Викторина аяқталды! Сіздің нәтижеңіз: {state['score']} / {len(questions)}.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -379,59 +372,12 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         return
-
-    # ✅ Отправляем следующий вопрос
     q = questions[index]
-    text = (
-        f"{q.question}\n\n"
-        f"1️⃣ {q.option1}\n\n"
-        f"2️⃣ {q.option2}\n\n"
-        f"3️⃣ {q.option3}\n\n"
-        f"4️⃣ {q.option4}"
-    )
+    text = f"{q.question}\n\n1️⃣ {q.option1}\n\n2️⃣ {q.option2}\n\n3️⃣ {q.option3}\n\n4️⃣ {q.option4}"
     buttons = [[InlineKeyboardButton(f"{i + 1}️⃣", callback_data=str(i + 1))] for i in range(4)]
 
-    # ✅ Проверка наличия фото
-    photo_url = None
-
-    # 1️⃣ Если в админке введена ссылка (image_url)
-    if getattr(q, "image_url", None):
-        photo_url = q.image_url
-
-    # 2️⃣ Если есть загруженный файл изображения (image)
-    elif getattr(q, "image", None) and q.image:
-        # Для Render (продакшен)
-        base_url = getattr(settings, 'RENDER_EXTERNAL_HOSTNAME', None)
-        if base_url:
-            photo_url = f"https://{base_url}{q.image.url}"
-        # Для локального запуска
-        else:
-            photo_url = f"http://127.0.0.1:8000{q.image.url}"
-
-    # ✅ Отправляем вопрос с фото (если есть)
-    if photo_url:
-        try:
-            await context.bot.send_photo(
-                chat_id=user_id,
-                photo=photo_url,
-                caption=text,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except Exception as e:
-            # Если Telegram не смог загрузить картинку — отправим текст
-            print(f"[WARNING] Не удалось отправить фото: {e}")
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=text,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-    else:
-        # Без фото
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=text,
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=InlineKeyboardMarkup(buttons))
+    state["answered"] = False
 
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
