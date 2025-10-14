@@ -11,6 +11,7 @@ from django.contrib.admin.sites import NotRegistered
 from .models import Quiz, QuizVariant, Question, UserResult, UserAnswer, UserProfile
 from .models import AllowedUser, InviteToken
 
+
 # ------------------- Общий фильтр по вариантам -------------------
 class VariantFilter(admin.SimpleListFilter):
     title = "Вариант"
@@ -50,7 +51,7 @@ class InviteTokenAdmin(admin.ModelAdmin):
 class AllowedUserAdmin(admin.ModelAdmin):
     list_display = ("get_user_id", "get_user_name", "quiz", "get_invite_token")
     search_fields = ("user_profile__user_name", "user_profile__user_id")
-    list_filter = ("quiz",)  # фильтр по викторинам
+    list_filter = ("quiz",)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "invite_token":
@@ -77,7 +78,7 @@ class AllowedUserAdmin(admin.ModelAdmin):
 class QuestionInline(admin.TabularInline):
     model = Question
     extra = 1
-    fields = ("question", "option1", "option2", "option3", "option4", "correct_answer", "image", "image_url")
+    fields = ("question", "option1", "option2", "option3", "option4", "correct_answer", "image_url")
 
 
 @admin.register(QuizVariant)
@@ -93,7 +94,11 @@ class QuestionAdmin(admin.ModelAdmin):
     list_display = ("id", "question", "variant", "correct_answer", "get_correct_option", "image_preview")
     list_filter = ("variant__quiz", VariantFilter)
     readonly_fields = ("image_preview",)
-    fields = ("variant", "question", "option1", "option2", "option3", "option4", "correct_answer", "image", "image_url", "image_preview")
+    fields = (
+        "variant", "question",
+        "option1", "option2", "option3", "option4",
+        "correct_answer", "image_url", "image_preview"
+    )
 
     def get_correct_option(self, obj):
         if obj.correct_answer is None:
@@ -103,16 +108,6 @@ class QuestionAdmin(admin.ModelAdmin):
         return "(неизвестно)"
 
     def image_preview(self, obj):
-        if not obj:
-            return "(нет)"
-        # локальное поле
-        if getattr(obj, "image", None) and obj.image:
-            try:
-                return format_html('<img src="{}" style="max-height:120px;"/>', obj.image.url)
-            except Exception:
-                # безопасный fallback
-                return "(файл недоступен)"
-        # внешняя ссылка
         if getattr(obj, "image_url", None):
             return format_html('<img src="{}" style="max-height:120px;"/>', obj.image_url)
         return "(нет изображения)"
@@ -174,10 +169,13 @@ class QuizAdmin(admin.ModelAdmin):
             quiz_title = request.POST.get("quiz_title", "Импортированная тема")
             quiz, _ = Quiz.objects.get_or_create(title=quiz_title)
 
-            # проверяем, есть ли нужные колонки (безопасно)
             required_cols = {"variant_title", "question_text", "answer_1", "answer_2", "answer_3", "answer_4"}
             if not required_cols.issubset(set(df.columns)):
-                self.message_user(request, "CSV должен содержать колонки: variant_title, question_text, answer_1..answer_4", level=messages.ERROR)
+                self.message_user(
+                    request,
+                    "CSV должен содержать колонки: variant_title, question_text, answer_1..answer_4",
+                    level=messages.ERROR,
+                )
                 return redirect("..")
 
             for variant_title in df["variant_title"].unique():
@@ -192,7 +190,6 @@ class QuizAdmin(admin.ModelAdmin):
                             correct_option = i
                             break
                     if correct_option is None:
-                        # пропускаем вопросы без правильного варианта
                         continue
 
                     Question.objects.create(
@@ -203,7 +200,6 @@ class QuizAdmin(admin.ModelAdmin):
                         option3=str(row.get("answer_3", "") or ""),
                         option4=str(row.get("answer_4", "") or ""),
                         correct_answer=correct_option,
-                        # если в CSV есть колонка image_url — запишем её (не пытаемся скачивать файл)
                         image_url=row.get("image_url", "") or None,
                     )
 
@@ -212,6 +208,7 @@ class QuizAdmin(admin.ModelAdmin):
         return HttpResponse("Ошибка: выберите CSV-файл", status=400)
 
 
+# Перерегистрируем Quiz с новой админкой
 try:
     admin.site.unregister(Quiz)
 except NotRegistered:

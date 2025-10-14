@@ -28,9 +28,6 @@ class Question(models.Model):
     option4 = models.CharField(max_length=255, null=True, blank=True)
     correct_answer = models.IntegerField(null=True, blank=True)
 
-    # NEW: загрузка файла через админку
-    image = models.ImageField(upload_to="questions/", null=True, blank=True, verbose_name="Изображение (файл)")
-
     # NEW: внешняя ссылка (URL), удобна при импорте из CSV/Google Sheets
     image_url = models.URLField(max_length=1000, null=True, blank=True, verbose_name="Изображение (URL)")
 
