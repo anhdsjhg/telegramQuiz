@@ -332,7 +332,6 @@ async def handle_variant_selection(update: Update, context: ContextTypes.DEFAULT
 
     # Показываем первый вопрос
     await send_question(query, context)
-
 async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     user_id = extract_user_id(update_or_query)
     state = user_states.get(user_id)
@@ -340,12 +339,16 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     if not state:
         await context.bot.send_message(chat_id=user_id, text="⚠️ Қате орын алды. Алдымен викторинаны бастаңыз.")
         return
+
     index = state["index"]
     questions = state["questions"]
+
+    # --- Если викторина завершена ---
     if index >= len(questions):
         quiz = await sync_to_async(Quiz.objects.get)(id=state["quiz_id"])
         variant = await sync_to_async(QuizVariant.objects.get)(id=state["variant_id"])
         profile = await get_user_profile(user_id)
+
         result = await sync_to_async(UserResult.objects.create)(
             user_profile=profile,
             quiz=quiz,
@@ -353,6 +356,8 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             score=state["score"],
             total=len(questions)
         )
+
+        # Сохраняем все ответы пользователя
         for answer in state["answers"]:
             await sync_to_async(UserAnswer.objects.create)(
                 result=result,
@@ -360,7 +365,14 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
                 selected_option=answer["selected"],
                 is_correct=answer["is_correct"]
             )
-        await context.bot.send_message(chat_id=user_id, text=f"🎉 Викторина аяқталды! Сіздің нәтижеңіз: {state['score']} / {len(questions)}.")
+
+        # Отправляем итоговый результат
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"🎉 Викторина аяқталды! Сіздің нәтижеңіз: {state['score']} / {len(questions)}."
+        )
+
+        # Предлагаем действия после викторины
         await context.bot.send_message(
             chat_id=user_id,
             text="Қандай әрекет жасаймыз?",
@@ -370,53 +382,43 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         return
-    q = questions[index]
-    text = f"{q.question}\n\n1️⃣ {q.option1}\n\n2️⃣ {q.option2}\n\n3️⃣ {q.option3}\n\n4️⃣ {q.option4}"
 
-    # Кнопки
+    # --- Получаем текущий вопрос ---
+    q = questions[index]
+    text = (
+        f"{q.question}\n\n"
+        f"1️⃣ {q.option1}\n\n"
+        f"2️⃣ {q.option2}\n\n"
+        f"3️⃣ {q.option3}\n\n"
+        f"4️⃣ {q.option4}"
+    )
+
+    # --- Кнопки для ответов ---
     buttons = [[InlineKeyboardButton(f"{i + 1}️⃣", callback_data=str(i + 1))] for i in range(4)]
     markup = InlineKeyboardMarkup(buttons)
 
-    # --- Новая логика отправки с поддержкой image / image_url ---
-    image_field = getattr(q, "image", None)
+    # --- Отправляем вопрос с поддержкой только image_url ---
     image_url_field = getattr(q, "image_url", None)
 
     try:
-        # 1) если локальный файл доступен (path), отправляем файл
-        if image_field and getattr(image_field, "path", None):
-            # открываем файл и отправляем (локально)
-            with open(image_field.path, "rb") as f:
-                await context.bot.send_photo(
-                    chat_id=user_id,
-                    photo=f,
-                    caption=text,
-                    reply_markup=markup
-                )
-        # 2) если есть публичный URL у image (например, S3)
-        elif image_field and getattr(image_field, "url", None):
-            await context.bot.send_photo(
-                chat_id=user_id,
-                photo=image_field.url,
-                caption=text,
-                reply_markup=markup
-            )
-        # 3) если есть внешняя ссылка, переданная из CSV/Sheets
-        elif image_url_field:
+        if image_url_field:
+            # Если есть ссылка на изображение — отправляем с фото
             await context.bot.send_photo(
                 chat_id=user_id,
                 photo=image_url_field,
                 caption=text,
                 reply_markup=markup
             )
-        # 4) fallback — отправляем простое текстовое сообщение
         else:
+            # Если картинки нет — просто текст
             await context.bot.send_message(
                 chat_id=user_id,
                 text=text,
                 reply_markup=markup
             )
+
     except Exception as e:
-        # Если что-то пошло не так, логируем и отправляем текст (чтобы не ломать прохождение)
+        # Если картинка не загрузилась — не прерываем викторину
         print("Ошибка при отправке фото:", e)
         await context.bot.send_message(
             chat_id=user_id,
