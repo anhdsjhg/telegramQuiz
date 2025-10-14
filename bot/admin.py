@@ -1,7 +1,15 @@
 from django.contrib import admin
+from django.utils.html import format_html
+from django.http import HttpResponse
+import pandas as pd
+from io import TextIOWrapper
+from django.shortcuts import redirect
+from django.urls import path
+from django.contrib import messages
+from django.contrib.admin.sites import NotRegistered
+
 from .models import Quiz, QuizVariant, Question, UserResult, UserAnswer, UserProfile
 from .models import AllowedUser, InviteToken
-
 
 # ------------------- Общий фильтр по вариантам -------------------
 class VariantFilter(admin.SimpleListFilter):
@@ -65,11 +73,11 @@ class AllowedUserAdmin(admin.ModelAdmin):
     get_invite_token.short_description = "Invite Token"
 
 
-
 # ------------------- QuizVariant -------------------
 class QuestionInline(admin.TabularInline):
     model = Question
     extra = 1
+    fields = ("question", "option1", "option2", "option3", "option4", "correct_answer", "image", "image_url")
 
 
 @admin.register(QuizVariant)
@@ -82,8 +90,10 @@ class QuizVariantAdmin(admin.ModelAdmin):
 # ------------------- Question -------------------
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ("id", "question", "variant", "correct_answer", "get_correct_option")
+    list_display = ("id", "question", "variant", "correct_answer", "get_correct_option", "image_preview")
     list_filter = ("variant__quiz", VariantFilter)
+    readonly_fields = ("image_preview",)
+    fields = ("variant", "question", "option1", "option2", "option3", "option4", "correct_answer", "image", "image_url", "image_preview")
 
     def get_correct_option(self, obj):
         if obj.correct_answer is None:
@@ -91,6 +101,22 @@ class QuestionAdmin(admin.ModelAdmin):
         if 1 <= obj.correct_answer <= 4:
             return getattr(obj, f"option{obj.correct_answer}")
         return "(неизвестно)"
+
+    def image_preview(self, obj):
+        if not obj:
+            return "(нет)"
+        # локальное поле
+        if getattr(obj, "image", None) and obj.image:
+            try:
+                return format_html('<img src="{}" style="max-height:120px;"/>', obj.image.url)
+            except Exception:
+                # безопасный fallback
+                return "(файл недоступен)"
+        # внешняя ссылка
+        if getattr(obj, "image_url", None):
+            return format_html('<img src="{}" style="max-height:120px;"/>', obj.image_url)
+        return "(нет изображения)"
+    image_preview.short_description = "Превью"
 
 
 # ------------------- UserResult -------------------
@@ -125,13 +151,6 @@ class UserAnswerAdmin(admin.ModelAdmin):
 
 
 # ------------------- Импорт CSV в Quiz -------------------
-from django.http import HttpResponse
-import pandas as pd
-from io import TextIOWrapper
-from django.shortcuts import redirect
-from django.urls import path
-from django.contrib import messages
-
 class QuizAdmin(admin.ModelAdmin):
     list_display = ("id", "title")
     change_list_template = "admin/quiz_changelist.html"
@@ -146,10 +165,20 @@ class QuizAdmin(admin.ModelAdmin):
     def import_csv(self, request):
         if request.method == "POST" and request.FILES.get("csv_file"):
             csv_file = TextIOWrapper(request.FILES["csv_file"].file, encoding="utf-8")
-            df = pd.read_csv(csv_file)
+            try:
+                df = pd.read_csv(csv_file)
+            except Exception as e:
+                self.message_user(request, f"Ошибка чтения CSV: {e}", level=messages.ERROR)
+                return redirect("..")
 
             quiz_title = request.POST.get("quiz_title", "Импортированная тема")
             quiz, _ = Quiz.objects.get_or_create(title=quiz_title)
+
+            # проверяем, есть ли нужные колонки (безопасно)
+            required_cols = {"variant_title", "question_text", "answer_1", "answer_2", "answer_3", "answer_4"}
+            if not required_cols.issubset(set(df.columns)):
+                self.message_user(request, "CSV должен содержать колонки: variant_title, question_text, answer_1..answer_4", level=messages.ERROR)
+                return redirect("..")
 
             for variant_title in df["variant_title"].unique():
                 variant_df = df[df["variant_title"] == variant_title]
@@ -158,28 +187,30 @@ class QuizAdmin(admin.ModelAdmin):
                 for _, row in variant_df.iterrows():
                     correct_option = None
                     for i in range(1, 5):
-                        if str(row[f"is_correct_{i}"]).strip().lower() == "true":
+                        cell = row.get(f"is_correct_{i}", "")
+                        if str(cell).strip().lower() == "true":
                             correct_option = i
                             break
                     if correct_option is None:
+                        # пропускаем вопросы без правильного варианта
                         continue
 
                     Question.objects.create(
                         variant=variant,
-                        question=row["question_text"],
-                        option1=row["answer_1"],
-                        option2=row["answer_2"],
-                        option3=row["answer_3"],
-                        option4=row["answer_4"],
+                        question=str(row.get("question_text", "") or ""),
+                        option1=str(row.get("answer_1", "") or ""),
+                        option2=str(row.get("answer_2", "") or ""),
+                        option3=str(row.get("answer_3", "") or ""),
+                        option4=str(row.get("answer_4", "") or ""),
                         correct_answer=correct_option,
+                        # если в CSV есть колонка image_url — запишем её (не пытаемся скачивать файл)
+                        image_url=row.get("image_url", "") or None,
                     )
 
             self.message_user(request, "CSV импорт выполнен успешно ✅", messages.SUCCESS)
             return redirect("..")
         return HttpResponse("Ошибка: выберите CSV-файл", status=400)
 
-
-from django.contrib.admin.sites import NotRegistered
 
 try:
     admin.site.unregister(Quiz)

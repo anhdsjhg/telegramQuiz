@@ -2,7 +2,6 @@ from django.db import models
 from django.db.models import F
 from django.core.exceptions import ValidationError
 
-
 class Quiz(models.Model):
     title = models.CharField(max_length=255)
 
@@ -20,7 +19,6 @@ class QuizVariant(models.Model):
         return f"(Без викторины) — {self.title}"
 
 
-
 class Question(models.Model):
     variant = models.ForeignKey(QuizVariant, on_delete=models.CASCADE, related_name="questions", null=True, blank=True)
     question = models.TextField()
@@ -30,11 +28,17 @@ class Question(models.Model):
     option4 = models.CharField(max_length=255, null=True, blank=True)
     correct_answer = models.IntegerField(null=True, blank=True)
 
+    # NEW: загрузка файла через админку
+    image = models.ImageField(upload_to="questions/", null=True, blank=True, verbose_name="Изображение (файл)")
+
+    # NEW: внешняя ссылка (URL), удобна при импорте из CSV/Google Sheets
+    image_url = models.URLField(max_length=1000, null=True, blank=True, verbose_name="Изображение (URL)")
+
     def __str__(self):
         return self.question
 
     def clean(self):
-        if not 1 <= self.correct_answer <= 4:
+        if self.correct_answer is not None and not 1 <= self.correct_answer <= 4:
             raise ValidationError("correct_answer должен быть числом от 1 до 4.")
 
     def save(self, *args, **kwargs):
@@ -104,7 +108,7 @@ class AllowedUser(models.Model):
     user_profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
     invite_token = models.ForeignKey(
-        'InviteToken',  
+        'InviteToken',
         null=True,
         blank=True,
         on_delete=models.SET_NULL

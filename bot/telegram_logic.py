@@ -280,7 +280,6 @@ async def handle_quiz_selection_with_id(user_id, quiz_id, context):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 async def handle_variant_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -334,7 +333,6 @@ async def handle_variant_selection(update: Update, context: ContextTypes.DEFAULT
     # Показываем первый вопрос
     await send_question(query, context)
 
-
 async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     user_id = extract_user_id(update_or_query)
     state = user_states.get(user_id)
@@ -374,11 +372,59 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
         return
     q = questions[index]
     text = f"{q.question}\n\n1️⃣ {q.option1}\n\n2️⃣ {q.option2}\n\n3️⃣ {q.option3}\n\n4️⃣ {q.option4}"
+
+    # Кнопки
     buttons = [[InlineKeyboardButton(f"{i + 1}️⃣", callback_data=str(i + 1))] for i in range(4)]
+    markup = InlineKeyboardMarkup(buttons)
 
-    await context.bot.send_message(chat_id=user_id, text=text, reply_markup=InlineKeyboardMarkup(buttons))
+    # --- Новая логика отправки с поддержкой image / image_url ---
+    image_field = getattr(q, "image", None)
+    image_url_field = getattr(q, "image_url", None)
+
+    try:
+        # 1) если локальный файл доступен (path), отправляем файл
+        if image_field and getattr(image_field, "path", None):
+            # открываем файл и отправляем (локально)
+            with open(image_field.path, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=f,
+                    caption=text,
+                    reply_markup=markup
+                )
+        # 2) если есть публичный URL у image (например, S3)
+        elif image_field and getattr(image_field, "url", None):
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=image_field.url,
+                caption=text,
+                reply_markup=markup
+            )
+        # 3) если есть внешняя ссылка, переданная из CSV/Sheets
+        elif image_url_field:
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=image_url_field,
+                caption=text,
+                reply_markup=markup
+            )
+        # 4) fallback — отправляем простое текстовое сообщение
+        else:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=text,
+                reply_markup=markup
+            )
+    except Exception as e:
+        # Если что-то пошло не так, логируем и отправляем текст (чтобы не ломать прохождение)
+        print("Ошибка при отправке фото:", e)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=markup
+        )
+
     state["answered"] = False
-
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -412,7 +458,6 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=user_id, text=feedback)
     await send_question(query, context)
 
-
 @sync_to_async
 def get_results_with_variants(user_id):
     results = UserResult.objects.filter(user_profile__user_id=user_id).select_related("quiz", "variant").order_by('-id')
@@ -428,7 +473,6 @@ def get_results_with_variants(user_id):
         )
     return output
 
-
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = extract_user_id(update)
     lines = await get_results_with_variants(user_id)
@@ -442,11 +486,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for part in parts:
             await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
 
-
 async def handle_quiz_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await show_quiz_options(update, context, only_allowed=False)
-
-
-
