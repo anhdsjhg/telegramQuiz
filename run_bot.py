@@ -2,10 +2,6 @@ import os
 import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-import asyncio  # <- добавляем для явного запуска delete_webhook
-
-# Получаем токен из переменных окружения
-TOKEN = os.environ.get("TOKEN")
 
 # Настройка Django окружения
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "telegramquiz.settings")
@@ -21,15 +17,13 @@ from bot.telegram_logic import (
     handle_text_message
 )
 
-async def setup_bot_commands(app):
-    # Удаляем webhook, чтобы polling работал
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    await app.bot.set_my_commands([
-        BotCommand("start", "Тестілеуді бастау"),
-        BotCommand("results", "Нәтижелерді көру"),
-    ])
+# Получаем токен из переменных окружения
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    raise ValueError("Не найден TOKEN в переменных окружения")
 
 def main():
+    # Создаём приложение бота
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Регистрируем хендлеры
@@ -42,23 +36,20 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
     app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-    # -----------------------------
-    # ИЗМЕНЁННАЯ ЧАСТЬ: удаляем webhook перед polling
-    asyncio.run(app.bot.delete_webhook(drop_pending_updates=True))
-    asyncio.run(app.bot.set_my_commands([
+    loop = app.bot.loop
+    loop.run_until_complete(app.bot.delete_webhook(drop_pending_updates=True))
+    loop.run_until_complete(app.bot.set_my_commands([
         BotCommand("start", "Тестілеуді бастау"),
         BotCommand("results", "Нәтижелерді көру"),
     ]))
-    # -----------------------------
+    # ------------------------------------
 
     print("Бот запущен")
-    app.run_polling(close_loop=False)  # polling теперь безопасен
+    app.run_polling(close_loop=False)  # polling безопасно
 
 if __name__ == "__main__":
     # Запускаем только если RUN_BOT=true
     if os.environ.get("RUN_BOT", "false").lower() == "true":
-        if not TOKEN:
-            raise ValueError("Не найден TOKEN в переменных окружения")
         main()
     else:
         print("RUN_BOT=false — бот не запущен.")
