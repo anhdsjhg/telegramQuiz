@@ -437,26 +437,37 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not state or "questions" not in state or "index" not in state:
         await context.bot.send_message(chat_id=user_id, text="Қате орын алды. /start командасынан қайта бастаңыз.")
         return
+
     if state.get("answered"):
         return
+
     state["answered"] = True
-    await query.edit_message_reply_markup(reply_markup=None)
+
+    # ✅ Безопасное удаление inline клавиатуры
+    if query.message.reply_markup is not None:
+        await query.edit_message_reply_markup(reply_markup=None)
+
     index = state["index"]
     questions = state["questions"]
     selected = int(query.data)
     correct = int(questions[index].correct_answer)
+
     feedback = (
         "✅ Дұрыс!" if selected == correct else
         f"❌ Қате. Дұрыс жауап: {[questions[index].option1, questions[index].option2, questions[index].option3, questions[index].option4][correct - 1]}"
     )
+
     if selected == correct:
         state["score"] += 1
+
     state["answers"].append({
         "question": questions[index],
         "selected": selected,
         "is_correct": selected == correct
     })
+
     state["index"] += 1
+
     await context.bot.send_message(chat_id=user_id, text=feedback)
     await send_question(query, context)
 
