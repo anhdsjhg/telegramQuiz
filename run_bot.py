@@ -2,6 +2,7 @@ import os
 import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+import asyncio  # <- добавляем для явного запуска delete_webhook
 
 # Получаем токен из переменных окружения
 TOKEN = os.environ.get("TOKEN")
@@ -41,11 +42,17 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
     app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-    # Настройка перед запуском
-    app.post_init = setup_bot_commands
+    # -----------------------------
+    # ИЗМЕНЁННАЯ ЧАСТЬ: удаляем webhook перед polling
+    asyncio.run(app.bot.delete_webhook(drop_pending_updates=True))
+    asyncio.run(app.bot.set_my_commands([
+        BotCommand("start", "Тестілеуді бастау"),
+        BotCommand("results", "Нәтижелерді көру"),
+    ]))
+    # -----------------------------
 
     print("Бот запущен")
-    app.run_polling(close_loop=False)  # Не закрываем event loop
+    app.run_polling(close_loop=False)  # polling теперь безопасен
 
 if __name__ == "__main__":
     # Запускаем только если RUN_BOT=true
