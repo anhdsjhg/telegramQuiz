@@ -3,7 +3,7 @@ import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
-# Настройка Django окружения
+# Настройка Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "telegramquiz.settings")
 django.setup()
 
@@ -17,7 +17,6 @@ from bot.telegram_logic import (
     handle_text_message
 )
 
-# Получаем токен
 TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
     raise ValueError("Не найден TOKEN в переменных окружения")
@@ -35,27 +34,25 @@ app.add_handler(CallbackQueryHandler(handle_variant_selection, pattern="^variant
 app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
 app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-# Асинхронная функция инициализации и запуска polling
-async def main_async():
-    # Удаляем старый webhook
+# Функция для удаления webhook и установки команд
+async def init_bot_commands():
     await app.bot.delete_webhook(drop_pending_updates=True)
-
-    # Устанавливаем команды бота
     await app.bot.set_my_commands([
         BotCommand("start", "Тестілеуді бастау"),
         BotCommand("results", "Нәтижелерді көру"),
     ])
-
-    print("Бот запущен")
-
-    # Запуск polling (асинхронно)
-    await app.run_polling()
-
+    print("Бот готов и команды установлены")
 
 if __name__ == "__main__":
     if os.environ.get("RUN_BOT", "false").lower() == "true":
         import asyncio
-        # Используем уже существующий event loop Render
-        asyncio.get_event_loop().run_until_complete(main_async())
+
+        # Удаляем webhook и ставим команды
+        asyncio.get_event_loop().create_task(init_bot_commands())
+
+        print("Бот запущен")
+
+        # Запуск polling напрямую, без создания нового loop
+        app.run_polling(close_loop=False)
     else:
         print("RUN_BOT=false — бот не запущен.")
