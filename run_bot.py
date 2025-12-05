@@ -3,7 +3,7 @@ import django
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
-# Django setup
+# Настройка Django окружения
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "telegramquiz.settings")
 django.setup()
 
@@ -21,7 +21,9 @@ TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
     raise ValueError("Не найден TOKEN в переменных окружения")
 
+
 async def main():
+    # Создаём приложение бота
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Регистрируем хендлеры
@@ -34,17 +36,23 @@ async def main():
     app.add_handler(CallbackQueryHandler(handle_quiz_repeat, pattern="^again$"))
     app.add_handler(CallbackQueryHandler(show_results, pattern="^view_results$"))
 
-    # Удаляем webhook и ставим команды
+    # Удаляем старый webhook, чтобы polling работал без конфликтов
     await app.bot.delete_webhook(drop_pending_updates=True)
+
+    # Устанавливаем команды бота
     await app.bot.set_my_commands([
         BotCommand("start", "Тестілеуді бастау"),
         BotCommand("results", "Нәтижелерді көру"),
     ])
 
     print("Бот запущен")
-    await app.run_polling()  # polling запускается асинхронно
+    
+    # Запуск polling
+    await app.run_polling()
+
 
 if __name__ == "__main__":
+    # Запускаем только если RUN_BOT=true
     if os.environ.get("RUN_BOT", "false").lower() == "true":
         import asyncio
         asyncio.run(main())
